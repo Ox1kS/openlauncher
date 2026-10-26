@@ -1,0 +1,106 @@
+name: Build OpenLauncher RU (Android 8.1)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Скачивание исходного кода
+        uses: actions/checkout@v4
+
+      - name: 2. Установка JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 3. Патч под Android 8.1 (SDK 26) и Русификация интерфейса
+        run: |
+          echo "Понижаем minSdk до 26 (Android 8.0/8.1)..."
+          find . -name "build.gradle*" -type f -exec sed -i -E 's/minSdk(Version)?[[:space:]]*=*[[:space:]]*[0-9]+/minSdk = 26/g' {} +
+
+          echo "Переводим строки интерфейса и виджетов на русский язык..."
+          python3 -c '
+          import glob, os
+
+          replacements = {
+              # Стороны света и спидометр
+              ">km/h<": ">км/ч<",
+              ""km/h"": ""км/ч"",
+              ""KM/H"": ""КМ/Ч"",
+              ""mph"": ""миль/ч"",
+              ""Speedometer"": ""Спидометр"",
+              ""Altimeter"": ""Высотомер"",
+              ""Trip Meter"": ""Бортовой компьютер"",
+              ""GPS Compass"": ""GPS Компас"",
+              ""Compass"": ""Компас"",
+              # Виджеты
+              ""Smart Music Player"": ""Музыкальный плеер"",
+              ""Music Player"": ""Музыка"",
+              ""No Track Playing"": ""Нет активного трека"",
+              ""Not Playing"": ""Пауза"",
+              ""Unknown Artist"": ""Неизвестный исполнитель"",
+              ""Unknown Title"": ""Без названия"",
+              ""AM/FM Radio"": ""Радио AM/FM"",
+              ""Radio"": ""Радио"",
+              ""Head Unit Vitals"": ""Монитор системы"",
+              ""System Vitals"": ""Система"",
+              ""CPU Load"": ""Нагрузка ЦП"",
+              ""Memory"": ""Память ОЗУ"",
+              ""RAM"": ""ОЗУ"",
+              ""Temperature"": ""Температура"",
+              ""Soundboard"": ""Звуковая панель"",
+              ""Dynamic Weather"": ""Погода"",
+              ""Weather"": ""Погода"",
+              ""Offline"": ""Офлайн"",
+              # Темы и настройки
+              ""Settings"": ""Настройки"",
+              ""Theme"": ""Тема оформления"",
+              ""Forced Dark"": ""Всегда тёмная"",
+              ""Forced Light"": ""Всегда светлая"",
+              ""System Sync"": ""Как в системе"",
+              ""Sunset Mode"": ""Авто (Закат/Рассвет)"",
+              ""Add Widget"": ""Добавить виджет"",
+              ""Remove Widget"": ""Удалить виджет"",
+              ""Edit Grid"": ""Изменить сетку"",
+              ""Lock Grid"": ""Закрепить сетку"",
+              ""All Apps"": ""Все приложения"",
+              ""Calibration"": ""Калибровка GPS"",
+              ""Reset Trip"": ""Сбросить пробег"",
+              ""Distance"": ""Пробег"",
+              ""Elapsed Time"": ""Время в пути"",
+          }
+
+          for root, _, files in os.walk("app/src/main"):
+              for file in files:
+                  if file.endswith((".kt", ".java", ".xml")):
+                      path = os.path.join(root, file)
+                      try:
+                          with open(path, "r", encoding="utf-8") as f:
+                              content = f.read()
+                          new_content = content
+                          for en, ru in replacements.items():
+                              new_content = new_content.replace(en, ru)
+                          if new_content != content:
+                              with open(path, "w", encoding="utf-8") as f:
+                                  f.write(new_content)
+                              print(f"Patched: {path}")
+                      except Exception as e:
+                          pass
+          '
+
+      - name: 4. Сборка готового APK (Debug-подпись для быстрой установки)
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: 5. Выгрузка готового русского APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenLauncher-RU-Android8.1-APK
+          path: app/build/outputs/apk/debug/*.apk
